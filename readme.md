@@ -25,6 +25,23 @@ Autonoma is a powerful Python package that leverages AI to autonomously modify a
 - 🧪 Automated testing of modifications
 - 📊 Detailed reporting of changes and thought processes
 - 🛠 Extensible architecture for custom agents and tasks
+## Agentic Framework Implementation
+
+Autonoma is built upon the principles of the Agentic Framework, implementing a sophisticated multi-agent system for advanced software development. 🧠🔧 
+
+Key aspects of our implementation include:
+
+- **Multi-Agent System**: Autonoma integrates Large Language Models (LLMs) with specialized agents, including a PlannerAgent, CoderAgent, and Tester, operating asynchronously within an event-driven architecture.
+
+- **Collaborative Workflow**: These agents work in concert to generate, refactor, and rigorously test code through an iterative process of continuous improvement. 🔄
+
+- **Advanced Technologies**: 
+  • Pydantic for robust data validation and serialization
+  • Asynchronous operations for efficient multi-agent coordination
+  • Advanced prompt engineering techniques for optimal LLM interaction
+  • Static code analysis and abstract syntax tree (AST) manipulation for deep code insights
+
+The result is a self-improving system that significantly enhances the reliability and quality of AI-generated code, while simultaneously addressing the complexity of modern software development. 🚀🔬
 
 ## Installation
 
