@@ -105,24 +105,6 @@ Autonoma is built around several key concepts:
 4. **Tester**: Runs tests on the modified code to ensure correctness.
 5. **Models**: Pydantic models that represent various entities like Project, Task, CodeFile, etc.
 
-### Configuring Agents
-
-You can customize the behavior of Autonoma by configuring its agents:
-
-```python
-from autonoma import AutonomaAgent, PlannerAgent, CoderAgent, Tester
-
-custom_planner = PlannerAgent(llm_interface, max_tasks=5)
-custom_coder = CoderAgent(llm_interface, style_guide="pep8")
-custom_tester = Tester(llm_interface, test_framework="pytest")
-
-agent = AutonomaAgent(
-    llm_interface,
-    planner_agent=custom_planner,
-    coder_agent=custom_coder,
-    tester=custom_tester
-)
-```
 
 ### Custom Tasks
 
