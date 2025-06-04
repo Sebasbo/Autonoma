@@ -58,13 +58,10 @@ Here's a simple example of how to use Autonoma to modify a Python function:
 ```python
 from autonoma import AutonomaAgent
 from autonoma.models import CodeFile
-from your_llm_package import YourLLMInterface  # Replace with your actual LLM interface
+from autonoma.frameworks import AgentFactory
 
-# Initialize your language model interface
-llm_interface = YourLLMInterface()
-
-# Initialize the Autonoma agent
-agent = AutonomaAgent(llm_interface)
+# Initialize the Autonoma agent with the selected framework
+agent = AutonomaAgent(AgentFactory.create_agent())
 
 # Prepare your codebase
 codebase = [
@@ -91,6 +88,16 @@ print(result.project_result.modified_files["example.py"])
 print("\nThought process:")
 for thought in result.project_result.thought_process:
     print(f"- {thought}")
+```
+
+### Configuring Agents
+
+The framework used by `AgentFactory` is controlled via the `AGENT_FRAMEWORK`
+environment variable. Set it to `langchain` (default) or `google_vertex` to
+choose the underlying implementation:
+
+```bash
+export AGENT_FRAMEWORK=google_vertex
 ```
 
 ## Usage Guide
@@ -141,8 +148,7 @@ The main class for interacting with Autonoma.
 
 ```python
 class AutonomaAgent:
-    def __init__(self, llm_interface: Any, planner_agent: Optional[PlannerAgent] = None,
-                 coder_agent: Optional[CoderAgent] = None, tester: Optional[Tester] = None):
+    def __init__(self, llm_agent: AbstractAgent):
         ...
 
     def process_query(self, query: str, code_base: List[CodeFile]) -> FinalResult:
@@ -161,7 +167,7 @@ Responsible for creating a plan of tasks based on the user's query.
 
 ```python
 class PlannerAgent:
-    def __init__(self, llm_interface: Any, max_tasks: int = 10):
+    def __init__(self, llm_agent: AbstractAgent):
         ...
 
     def create_query_plan(self, plan_request: PlanRequest) -> Project:
@@ -174,7 +180,7 @@ Generates and modifies code based on tasks and test results.
 
 ```python
 class CoderAgent:
-    def __init__(self, llm_interface: Any, style_guide: str = "pep8"):
+    def __init__(self, llm_agent: AbstractAgent):
         ...
 
     def generate_code(self, task: Task, agent: Agent) -> GeneratedCode:
@@ -190,7 +196,7 @@ Runs tests on the modified code to ensure correctness.
 
 ```python
 class Tester:
-    def __init__(self, llm_interface: Any, test_framework: str = "unittest"):
+    def __init__(self, llm_agent: AbstractAgent):
         ...
 
     def run_tests(self, modified_code: GeneratedCode, codebase: List[CodeFile]) -> Tuple[List[TestResult], List[TestResult]]:
@@ -215,16 +221,17 @@ Here's an example of how to integrate a custom language model:
 ```python
 from autonoma import AutonomaAgent
 from your_custom_llm import CustomLLM
+from autonoma.frameworks import AbstractAgent
 
-class CustomLLMInterface:
+class CustomAgent(AbstractAgent):
     def __init__(self):
         self.model = CustomLLM()
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, user_prompt: str, system_prompt: str = "") -> str:
+        prompt = f"{system_prompt}\n{user_prompt}" if system_prompt else user_prompt
         return self.model.generate_text(prompt)
 
-llm_interface = CustomLLMInterface()
-agent = AutonomaAgent(llm_interface)
+agent = AutonomaAgent(CustomAgent())
 
 # Use the agent as normal
 ```
@@ -251,7 +258,7 @@ def load_codebase(directory):
 codebase = load_codebase('./your_project_directory')
 
 # Initialize the agent
-agent = AutonomaAgent(your_llm_interface)
+agent = AutonomaAgent(AgentFactory.create_agent())
 
 # Define a large-scale refactoring task
 query = """

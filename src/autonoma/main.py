@@ -1,14 +1,13 @@
 from autonoma import AutonomaAgent
-from autonoma.utils.llm_interface import LLMInterface
-from autonoma.config.settings import OPENAI_API_KEY
+from autonoma.frameworks import AgentFactory
 import json
 import os
 from autonoma.models.agent import CodeFile
 
 
 def main():
-    llm_interface = LLMInterface(os.getenv("OPENAI_API_KEY"))
-    autonoma = AutonomaAgent(llm_interface)
+    llm_agent = AgentFactory.create_agent()
+    autonoma = AutonomaAgent(llm_agent)
     query = "Refactor the functions in data_processor.py and utils.py to use higher-order functions like map, filter, and reduce instead of for loops"
     codebase = [
         {
