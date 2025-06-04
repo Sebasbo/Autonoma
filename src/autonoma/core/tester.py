@@ -5,19 +5,20 @@ from typing import List, Tuple
 from pydantic import BaseModel
 from ..utils.code_executor import CodeExecutor
 from autonoma.models import CodeFile, TestCodeResponse, TestResult, CodeChange, GeneratedCode
+from autonoma.frameworks import AbstractAgent
 
 
 class Tester:
     """Tester class for running tests on modified code."""
 
-    def __init__(self, llm_interface):
+    def __init__(self, llm_agent: AbstractAgent):
         """
         Initialize the Tester.
 
         Args:
-            llm_interface: An interface to the language model for generating test code.
+            llm_agent: Concrete agent implementation used for LLM interactions.
         """
-        self.llm_interface = llm_interface
+        self.llm_agent = llm_agent
         self.code_executor = CodeExecutor()
 
     def run_tests(
@@ -97,7 +98,7 @@ class Tester:
 
         Do not use any import statements other than for the unittest module.
         """
-        response = self.llm_interface.generate(prompt)
+        response = self.llm_agent.generate(prompt)
         try:
             parsed_response = json.loads(response)
             return TestCodeResponse(**parsed_response)

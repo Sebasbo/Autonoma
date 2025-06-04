@@ -3,19 +3,20 @@
 import json
 from typing import List, Dict
 from autonoma.models import Project, TaskType, CodeFile, PlanRequest
+from autonoma.frameworks import AbstractAgent
 
 
 class PlannerAgent:
     """PlannerAgent for creating query plans."""
 
-    def __init__(self, llm_interface):
+    def __init__(self, llm_agent: AbstractAgent):
         """
         Initialize the PlannerAgent.
 
         Args:
-            llm_interface: An interface to the language model for generating plans.
+            llm_agent: Concrete agent implementation used for LLM interactions.
         """
-        self.llm_interface = llm_interface
+        self.llm_agent = llm_agent
 
     def create_query_plan(self, plan_request: PlanRequest) -> Project:
         """
@@ -28,7 +29,7 @@ class PlannerAgent:
             A Project object containing the created query plan.
         """
         prompt = self._generate_prompt(plan_request)
-        plan_dict = json.loads(self.llm_interface.generate(prompt))
+        plan_dict = json.loads(self.llm_agent.generate(prompt))
 
         # Create a Project object
         project = Project(**plan_dict)

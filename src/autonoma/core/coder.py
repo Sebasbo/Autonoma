@@ -1,6 +1,6 @@
 """CoderAgent module for the Autonoma package."""
 
-from typing import Any
+from autonoma.frameworks import AbstractAgent
 from autonoma.models import Agent, Task, GeneratedCode
 
 
@@ -9,14 +9,14 @@ class CoderAgent:
     CoderAgent for generating and modifying code.
     """
 
-    def __init__(self, llm_interface: Any):
+    def __init__(self, llm_agent: AbstractAgent):
         """
         Initialize the CoderAgent.
 
         Args:
-            llm_interface: An interface to the language model for generating responses.
+            llm_agent: Concrete agent implementation used for LLM interactions.
         """
-        self.llm_interface = llm_interface
+        self.llm_agent = llm_agent
 
     def generate_code(self, task: Task, agent: Agent) -> GeneratedCode:
         """
@@ -47,7 +47,7 @@ class CoderAgent:
         Act as the following agent:
         {agent.json()}
         """
-        response = self.llm_interface.generate(user_prompt=user_prompt, system_prompt=system_prompt)
+        response = self.llm_agent.generate(user_prompt=user_prompt, system_prompt=system_prompt)
         return GeneratedCode.parse_raw(response)
 
     def modify_code_based_on_test(
@@ -98,5 +98,5 @@ class CoderAgent:
         Ensure you mock all the imports.
         """
 
-        response = self.llm_interface.generate(user_prompt=user_prompt, system_prompt=system_prompt)
+        response = self.llm_agent.generate(user_prompt=user_prompt, system_prompt=system_prompt)
         return GeneratedCode.parse_raw(response)

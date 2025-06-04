@@ -1,6 +1,7 @@
 """Core agent module for the Autonoma package."""
 
-from typing import List, Any
+from typing import List
+from autonoma.frameworks import AbstractAgent
 from autonoma.models import (
     Project,
     Agent,
@@ -27,17 +28,17 @@ class AutonomaAgent:
     This class orchestrates the entire process of code modification and analysis.
     """
 
-    def __init__(self, llm_interface: Any):
+    def __init__(self, llm_agent: AbstractAgent):
         """
         Initialize the AutonomaAgent.
 
         Args:
-            llm_interface: An interface to the language model for generating responses.
+            llm_agent: Concrete agent implementation used for LLM interactions.
         """
-        self.llm_interface = llm_interface
-        self.planner_agent = PlannerAgent(llm_interface)
-        self.coder_agent = CoderAgent(llm_interface)
-        self.tester = Tester(llm_interface)
+        self.llm_agent = llm_agent
+        self.planner_agent = PlannerAgent(llm_agent)
+        self.coder_agent = CoderAgent(llm_agent)
+        self.tester = Tester(llm_agent)
         self.reflector = Reflector()
 
     def process_query(self, query: str, code_base: List[CodeFile]) -> FinalResult:
@@ -194,7 +195,7 @@ class AutonomaAgent:
             A TaskResult object containing the results of the language model execution.
         """
         self.reflector.reflect(f"Executing LLM task: {task.description}")
-        result = self.llm_interface.generate(task.prompt_llm)
+        result = self.llm_agent.generate(task.prompt_llm)
         return TaskResult(task_id=task.id, success=True, output=result)
 
     def compile_results(self, project_result: ProjectResult) -> FinalResult:
