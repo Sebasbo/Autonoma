@@ -119,7 +119,11 @@ class AutonomaAgent:
             else: # Assume it's already a dict
                 processed_final_code_changes.append(item)
 
-        modified_code_files: List[CodeFile] = [CodeFile(**cf_dict) for cf_dict in processed_final_code_changes]
+        # Explicitly map dictionary keys to CodeFile fields
+        modified_code_files: List[CodeFile] = [
+            CodeFile(path=cf_dict['path'], content=cf_dict['code'])
+            for cf_dict in processed_final_code_changes
+        ]
 
         initial_paths = {cf.path for cf in code_base}
         modified_paths = {mcf.path for mcf in modified_code_files}
