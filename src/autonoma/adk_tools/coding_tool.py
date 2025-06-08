@@ -108,7 +108,7 @@ class CodeGenerationTool: # Potentially: CodeGenerationTool(FunctionTool):
         Generates initial code based on a task description and relevant code.
         Adapts logic from CoderAgent.generate_code.
         """
-        user_prompt = f\"\"\"
+        user_prompt = f"""
         Write Python code to accomplish the following task:
         {tool_input.task_description}
 
@@ -125,7 +125,7 @@ class CodeGenerationTool: # Potentially: CodeGenerationTool(FunctionTool):
         If you are modifying an existing file, provide the complete new content for that file.
         If you are creating a new file, provide its full content.
         Ensure each entry in "code_changes" represents a complete file's content.
-        \"\"\"
+        """
 
         system_prompt = self._construct_system_prompt_for_generation()
 
@@ -148,7 +148,7 @@ class CodeGenerationTool: # Potentially: CodeGenerationTool(FunctionTool):
         # Convert List[CodeChange] to a more readable format for the prompt
         current_code_str = json.dumps([cc.model_dump() for cc in tool_input.current_code], indent=2)
 
-        user_prompt = f\"\"\"
+        user_prompt = f"""
         Modify the following Python code to pass the given test:
 
         Current code (as a list of file changes):
@@ -174,7 +174,7 @@ class CodeGenerationTool: # Potentially: CodeGenerationTool(FunctionTool):
         Ensure each entry in "code_changes" represents a complete file's content.
         If a file from the original code is not modified, you can omit it from the response
         or include it with its original code. For clarity, prefer to only include changed files.
-        \"\"\"
+        """
 
         system_prompt = self._construct_system_prompt_for_refinement()
 
@@ -284,5 +284,3 @@ if __name__ == "__main__":
 
     except ValueError as e:
         print(f"Error (Flexible LLM): {e}")
-
-```

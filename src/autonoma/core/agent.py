@@ -8,7 +8,7 @@ from autonoma.models import (
     ProjectResult,
     # AgentResult, TaskResult - No longer directly used here
     FinalResult,
-    ExecutedProject, # For dummy project in ProjectResult
+    # ExecutedProject, # Removed this problematic import
 )
 # from .planner import PlannerAgent # Removed
 # from .coder import CoderAgent # Removed
@@ -139,22 +139,32 @@ class AutonomaAgent:
         # Assuming final_code_changes ONLY includes changed/new files.
 
         initial_code_map = {cf.path: cf.content for cf in code_base}
-        truly_modified_files_final = []
-        for mcf in actually_modified_files_list:
+
+        # Determine truly modified files (as List[CodeFile])
+        truly_modified_codefiles_list = []
+        for mcf in actually_modified_files_list: # actually_modified_files_list is List[CodeFile]
             if mcf.path in initial_code_map and initial_code_map[mcf.path] != mcf.content:
-                truly_modified_files_final.append(mcf)
-            elif mcf.path not in initial_code_map: # Should be caught by new_files_list but as a safeguard
-                 new_files_list.append(mcf)
+                truly_modified_codefiles_list.append(mcf)
+            # If mcf.path is not in initial_code_map, it's a new file, handled by new_files_list.
+            # This ensures `truly_modified_codefiles_list` only contains files that existed and were changed.
 
+        # new_files_list is already List[CodeFile]
+        # unchanged_files_dict is already Dict[str, str]
 
-        dummy_executed_project = ExecutedProject(agents=[])
+        # Convert lists to dicts for ProjectResult, as per hypothesized runtime model
+        modified_files_dict = {cf.path: cf.content for cf in truly_modified_codefiles_list}
+        new_files_dict = {cf.path: cf.content for cf in new_files_list}
+        # unchanged_files_dict is already in the correct format Dict[str, str]
+
+        # Use Project(agents=[]) instead of ExecutedProject
+        project_for_result = Project(agents=[])
 
         project_result_obj = ProjectResult(
-            project=dummy_executed_project,
+            project=project_for_result,
             agent_results=[],
-            modified_files=truly_modified_files_final,
-            new_files=new_files_list,
-            unchanged_files=unchanged_files_dict,
+            modified_files=modified_files_dict, # Changed to Dict[str, str]
+            new_files=new_files_dict,           # Changed to Dict[str, str]
+            unchanged_files=unchanged_files_dict, # Remains Dict[str, str]
             thought_process=self.reflector.thought_process
         )
 

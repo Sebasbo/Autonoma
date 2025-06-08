@@ -76,7 +76,7 @@ class PlanningTool: # Potentially: PlanningTool(FunctionTool):
         )
 
         # This prompt is taken directly from autonoma.core.planner.PlannerAgent
-        return f\"\"\"
+        return f"""
         You are an AI assistant specializing in software development and code modification.
         Your task is to create a plan to address a query about modifying a specific codebase.
 
@@ -126,7 +126,7 @@ class PlanningTool: # Potentially: PlanningTool(FunctionTool):
         Don't include analysis tasks only, always refactor something.
         Don't use a file in multiple tasks, be extremely critical on the amount of tasks, the fewer tasks the better.
         Only use a file once over all the tasks.
-        \"\"\"
+        """
 
     def _validate_and_populate_relevant_code(self, project: Project, code_files: List[CodeFile]):
         """
@@ -250,5 +250,3 @@ if __name__ == "__main__":
     # output_for_new_file = planning_tool.execute_planning(tool_input_for_new_file_scenario)
     # print(output_for_new_file.plan.model_dump_json(indent=2))
     # Expected: ... "relevant_code": {"new_file.py": ""} ...
-
-```

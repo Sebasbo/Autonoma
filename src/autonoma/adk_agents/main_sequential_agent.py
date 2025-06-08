@@ -434,23 +434,7 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
 
-    # 3. Sample query and initial codebase
-    sample_query = "Refactor file_a.py to include a new function 'greet' and add tests for it."
-    sample_codebase = [
-        CodeFile(path="file_a.py", content="print('Hello from file_a.py')"),
-        CodeFile(path="requirements.txt", content="requests==2.25.1")
-    ]
-
-    # 4. Call the run method
-    try:
-        results = main_agent.run(query=sample_query, initial_codebase=sample_codebase)
-        print("\n--- Agent Run Results ---")
-        print(json.dumps(results, indent=2, default=str)) # Use default=str for any non-serializable objects
-    except Exception as e:
-        print(f"An error occurred during the agent run: {e}")
-        import traceback
-        traceback.print_exc()
+    # The following block was duplicated and caused a syntax error.
+    # Removing the duplicated part. The original test block above is correct.
 
     print("\n--- MainSequentialAgent Test Finished ---")
-
-```

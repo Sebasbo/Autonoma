@@ -98,7 +98,7 @@ class TestExecutionTool: # Potentially: TestExecutionTool(FunctionTool)
         # Convert CodeChange list to dict for the prompt, similar to `code.dict()` in Tester
         code_to_prompt = {"code_changes": [cc.model_dump() for cc in code_changes]}
 
-        prompt = f\"\"\"
+        prompt = f"""
         Given the following Python code changes:
 
         {json.dumps(code_to_prompt, indent=2)}
@@ -129,7 +129,7 @@ class TestExecutionTool: # Potentially: TestExecutionTool(FunctionTool)
            Prefer creating tests that can run if original_code_path and test_path are in the same directory or appropriate PYTHONPATH.
 
         Provide tests for each file in the code_changes.
-        \"\"\"
+        """
         raw_llm_response = self.llm_interface.generate(prompt)
         try:
             # TestCodeResponse.parse_raw expects a JSON string
@@ -304,5 +304,3 @@ if __name__ == "__main__":
         # Failed: test_main.py, test_config.py
     except ValueError as e:
         print(f"Error: {e}")
-
-```
