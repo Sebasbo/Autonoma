@@ -6,7 +6,7 @@ from typing import List
 class Reflector:
     """A class to handle reflection and thought process logging."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.thought_process: List[str] = []
 
     def reflect(self, thought: str) -> None:

@@ -9,13 +9,13 @@ from unittest.mock import MagicMock
 from types import ModuleType
 import pkgutil
 from typing import List, Dict, Set
-from autonoma.models import ExecutionResult
+from autonoma.models.result import ExecutionResult # Updated import
 
 
 class CodeExecutor:
     """Executes code with mocking capabilities for external modules."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the CodeExecutor with stdlib modules."""
         self.mocked_modules: Dict[str, MagicMock] = {}
         self.stdlib_modules: Set[str] = set(m.name for m in pkgutil.iter_modules())
@@ -143,19 +143,24 @@ class CodeExecutor:
                 )
 
                 return ExecutionResult(
-                    success=result.returncode == 0,
-                    output=result.stdout if result.returncode == 0 else result.stderr,
+                    success=(result.returncode == 0),
+                    output=result.stdout,
+                    error=result.stderr if result.returncode != 0 else None,
                     mocked_modules=list(self.mocked_modules.keys()),
                 )
             except subprocess.TimeoutExpired:
                 return ExecutionResult(
                     success=False,
-                    output="Execution timed out",
+                    output="",
+                    error="Execution timed out",
                     mocked_modules=list(self.mocked_modules.keys()),
                 )
             except Exception as e:
                 return ExecutionResult(
-                    success=False, output=str(e), mocked_modules=list(self.mocked_modules.keys())
+                    success=False,
+                    output="",
+                    error=str(e),
+                    mocked_modules=list(self.mocked_modules.keys())
                 )
             finally:
                 # Clean up

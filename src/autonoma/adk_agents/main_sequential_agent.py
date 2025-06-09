@@ -27,9 +27,9 @@ except ImportError:
             raise NotImplementedError("This is a placeholder SequentialAgent.")
 
     class AdkBuiltInCodeExecutionTool: # Placeholder for ADK's code executor
-        def __init__(self, *args, **kwargs): # Placeholder init
+        def __init__(self, *args: Any, **kwargs: Any): # Placeholder init
             pass
-        def execute(self, script_to_execute: str, files_in_context: Dict[str, str], command_args: Optional[List[str]] = None) -> 'AdkCodeExecutionResult':
+        def execute(self, script_to_execute: str, files_in_context: Dict[str, str], command_args: Optional[List[str]] = None) -> AdkCodeExecutionResult: # Changed to direct type
             print(f"Placeholder AdkBuiltInCodeExecutionTool.execute called for {script_to_execute}")
             # Simulate a result structure
             return AdkCodeExecutionResult(success=True, stdout="Placeholder output", stderr="", exit_code=0)
@@ -46,13 +46,14 @@ except ImportError:
 # --- Custom Tool Imports ---
 from autonoma.adk_tools.planning_tool import PlanningTool, PlanningToolInput, PlanningToolOutput, LLMInterface as PlanningLLMInterface
 from autonoma.adk_tools.coding_tool import CodeGenerationTool, GenerateInitialCodeInput, RefineCodeInput, LLMInterface as CodingLLMInterface
-from autonoma.adk_tools.testing_tool import TestExecutionTool, GenerateAndPrepareTestsInput, InterpretTestResultsInput, PreparedTest, InterpretedTestResult, LLMInterface as TestingLLMInterface
+from autonoma.adk_tools.testing_tool import TestExecutionTool, GenerateAndPrepareTestsInput, InterpretTestResultsInput, PreparedTest, InterpretedTestResult, LLMInterface as TestingLLMInterface # Added PreparedTest
 
 # --- Autonoma Model Imports ---
-from autonoma.models.agent import CodeFile # For initial_codebase
+from autonoma.models.code import CodeFile # For initial_codebase
 from autonoma.models.project import Project # Output of PlanningTool
 from autonoma.models.task import Task, TaskType # From the Project plan
-from autonoma.models.coder import CodeChange, GeneratedCode # For code generation results
+from autonoma.models.code import CodeChange, GeneratedCode # For code generation results (Corrected: was models.coder)
+from autonoma.models.agent import Agent # Added for typing agent_plan
 
 # --- Placeholder for LLMInterface (if a single type is used across tools) ---
 # For now, tools define their own LLMInterface placeholders.
@@ -109,76 +110,88 @@ MAX_REFINEMENT_ITERATIONS = 2
 # HYPOTHETICAL: The real ADK SequentialAgent might require specific tools to be registered
 # or passed in a certain way. This __init__ signature might need adjustment.
 
-class MainSequentialAgent(SequentialAgent):
+class MainSequentialAgent(SequentialAgent):  # type: ignore # Ignore if SequentialAgent is a placeholder
+    """
+    Orchestrates a sequence of planning, coding, and testing operations
+    using ADK tools and custom Autonoma tools.
+    """
     def __init__(self,
-                 llm_interface: GlobalLLMInterface, # Using the global one for simplicity here
-                 planning_tool: PlanningTool, # Custom tool
-                 code_generation_tool: CodeGenerationTool, # Custom tool
-                 testing_tool: TestExecutionTool, # Custom tool
-                 code_executor_tool: AdkBuiltInCodeExecutionTool): # HYPOTHETICAL: Real ADK tool
+                 llm_interface: GlobalLLMInterface,
+                 planning_tool: PlanningTool,
+                 code_generation_tool: CodeGenerationTool,
+                 testing_tool: TestExecutionTool,
+                 code_executor_tool: AdkBuiltInCodeExecutionTool):
+        """
+        Initializes the MainSequentialAgent.
+
+        Args:
+            llm_interface: An LLM interface for tools that require direct LLM access.
+            planning_tool: Tool for generating the initial project plan.
+            code_generation_tool: Tool for generating and refining code.
+            testing_tool: Tool for generating tests and interpreting results.
+            code_executor_tool: ADK tool for executing code and tests.
+        """
         super().__init__() # Assuming base class needs initialization
-        self.llm_interface = llm_interface # For custom tools that need direct LLM access
+        self.llm_interface: GlobalLLMInterface = llm_interface
 
-        # Store custom tools
-        self.planning_tool = planning_tool
-        self.code_generation_tool = code_generation_tool
-        self.testing_tool = testing_tool
-        self.code_executor_tool = code_executor_tool
+        self.planning_tool: PlanningTool = planning_tool
+        self.code_generation_tool: CodeGenerationTool = code_generation_tool
+        self.testing_tool: TestExecutionTool = testing_tool
+        self.code_executor_tool: AdkBuiltInCodeExecutionTool = code_executor_tool
 
-        # Internal state to track code changes throughout the process
         self.current_codebase_state: Dict[str, str] = {}
 
-    def _update_codebase_state(self, code_changes: List[CodeChange]):
+    def _update_codebase_state(self, code_changes: List[CodeChange]) -> None:
+        """Updates the internal codebase state with the latest code changes."""
         for change in code_changes:
             self.current_codebase_state[change.path] = change.code
 
-    def run(self, query: str, initial_codebase: List[CodeFile]) -> Dict:
+    def run(self, query: str, initial_codebase: List[CodeFile]) -> Dict[str, Any]:
         """
         Main execution method for the sequential agent.
+        Orchestrates planning, code generation, testing, and refinement.
         """
         print(f"--- MainSequentialAgent: Starting run for query: '{query}' ---")
 
-        # Initialize codebase state
         self.current_codebase_state = {cf.path: cf.content for cf in initial_codebase}
 
-        final_results = {
+        final_results: Dict[str, Any] = {
             "query": query,
             "plan": None,
             "final_code_changes": [],
-            "test_summary": [], # List of strings or structured test results
+            "test_summary": [],
             "errors": []
         }
 
         # Step 1: Planning
         print("--- Step 1: Planning ---")
-        planning_input = PlanningToolInput(query=query, code_files=initial_codebase)
+        planning_input: PlanningToolInput = PlanningToolInput(query=query, code_files=initial_codebase)
         try:
             plan_output: PlanningToolOutput = self.planning_tool.execute_planning(planning_input)
             project_plan: Project = plan_output.plan
-            final_results["plan"] = project_plan.model_dump()
+            final_results["plan"] = project_plan.model_dump() # Use model_dump for Pydantic v2+
             print(f"Planning successful. Plan: {project_plan.model_dump_json(indent=2, exclude_none=True)}")
         except Exception as e:
             print(f"Error during planning: {e}")
             final_results["errors"].append(f"Planning failed: {str(e)}")
-            return final_results
+            return final_results # type: ignore # In case of error, type might not match full success
 
         # Step 2: Task Execution Loop
         print("\n--- Step 2: Task Execution ---")
-        all_task_generated_code: List[CodeChange] = [] # Accumulates all successful code changes
+        all_task_generated_code: List[CodeChange] = []
 
+        agent_plan: Agent
         for agent_plan in project_plan.agents:
+            task: Task
             for task in agent_plan.tasks:
                 print(f"\nExecuting Task: {task.id} - {task.description}")
                 if task.task_type == TaskType.CODE_IMPLEMENTATION:
                     current_task_code_changes: Optional[List[CodeChange]] = None
-                    task_test_results_summary: List[Dict] = []
+                    task_test_results_summary: List[Dict[str, Any]] = [] # Be more specific
 
-                    # Use relevant_code from the plan for the initial generation
-                    # This relevant_code should already be populated by the PlanningTool
-                    relevant_code_for_task = task.relevant_code if task.relevant_code else {}
+                    relevant_code_for_task: Dict[str, str] = task.relevant_code.copy() if task.relevant_code else {}
 
-                    # Ensure paths mentioned in file_paths but not in relevant_code (e.g. new files)
-                    # are present with empty content if not already there.
+                    path: str
                     for path in task.file_paths:
                         if path not in relevant_code_for_task:
                              relevant_code_for_task[path] = self.current_codebase_state.get(path, "")
@@ -186,89 +199,73 @@ class MainSequentialAgent(SequentialAgent):
 
                     # Initial Code Generation
                     print(f"  Generating initial code for task: {task.id}...")
-                    gen_input = GenerateInitialCodeInput(
+                    gen_input: GenerateInitialCodeInput = GenerateInitialCodeInput(
                         task_description=task.description,
                         relevant_code=relevant_code_for_task
-                        # agent_context would be derived from agent_plan if needed by tool
                     )
                     try:
                         generated_code_output: GeneratedCode = self.code_generation_tool.generate_initial_code(gen_input)
                         current_task_code_changes = generated_code_output.code_changes
-                        self._update_codebase_state(current_task_code_changes) # Update global state
+                        if current_task_code_changes is not None: # Ensure it's not None before updating
+                            self._update_codebase_state(current_task_code_changes)
                         print(f"  Initial code generated for {task.id}: {current_task_code_changes}")
                     except Exception as e:
                         print(f"  Error during initial code generation for task {task.id}: {e}")
                         final_results["errors"].append(f"Initial code gen failed for {task.id}: {str(e)}")
-                        continue # Move to next task if initial generation fails
+                        continue
+
+                    if current_task_code_changes is None: # If generation failed and resulted in None
+                        print(f"  Skipping test/refine for {task.id} due to prior generation failure or no changes.")
+                        continue
 
                     # Test & Refine Loop
+                    i: int
                     for i in range(MAX_REFINEMENT_ITERATIONS):
                         print(f"  Test & Refine Iteration {i + 1}/{MAX_REFINEMENT_ITERATIONS} for task {task.id}...")
 
-                        # Generate Tests
                         print(f"    Generating tests...")
-                        # Prepare input for test generation: current code for this task + overall codebase state for context
-                        # The code_to_test should be what was just generated/refined for this task.
-                        # existing_codebase_map provides the broader context.
-                        prepare_tests_input = GenerateAndPrepareTestsInput(
-                            code_to_test=current_task_code_changes,
+                        prepare_tests_input: GenerateAndPrepareTestsInput = GenerateAndPrepareTestsInput(
+                            code_to_test=current_task_code_changes, # Should not be None here
                             existing_codebase_map=self.current_codebase_state
                         )
                         try:
-                            prepared_tests_output = self.testing_tool.generate_and_prepare_tests(prepare_tests_input)
+                            # Assuming generate_and_prepare_tests returns GenerateAndPrepareTestsOutput
+                            prepared_tests_output: GenerateAndPrepareTestsOutput = self.testing_tool.generate_and_prepare_tests(prepare_tests_input)
                             if not prepared_tests_output.prepared_tests:
                                 print("    No tests generated. Assuming success for this iteration or task requires no tests.")
-                                break # Exit refinement loop if no tests are generated
+                                break
                         except Exception as e:
                             print(f"    Error generating tests: {e}")
                             final_results["errors"].append(f"Test generation failed for {task.id}: {str(e)}")
-                            break # Exit refinement loop
+                            break
 
-                        # Execute Tests (Simulated)
                         print(f"    Executing {len(prepared_tests_output.prepared_tests)} test(s)...")
-                        raw_exec_results = []
+                        raw_exec_results: List[Dict[str, Any]] = []
+                        prep_test: PreparedTest
                         for prep_test in prepared_tests_output.prepared_tests:
-                            # Construct the full context for the ADK code executor
-                            # This includes the test script itself, the code being tested, and any dependencies.
-                            current_exec_context = self.current_codebase_state.copy()
+                            current_exec_context: Dict[str, str] = self.current_codebase_state.copy()
                             current_exec_context[prep_test.test_script_path] = prep_test.test_script_content
-                            # Ensure the specific versions of files being tested are in context
-                            for chg in current_task_code_changes:
-                                current_exec_context[chg.path] = chg.code
 
-                            # HYPOTHETICAL: Using the real ADK Code Execution tool
-                            # The ADK tool might expect:
-                            # 1. The name/path of the script to execute (prep_test.test_script_path)
-                            # 2. A dictionary of all files (name -> content) to be materialized in the execution sandbox.
-                            # 3. Potentially, specific command arguments (e.g., ["python", prep_test.test_script_path])
+                            change_obj: CodeChange # Type hint for loop variable
+                            for change_obj in current_task_code_changes: # current_task_code_changes is List[CodeChange]
+                                current_exec_context[change_obj.path] = change_obj.code
 
-                            # The ADK tool might save these files to a temporary directory and run the script.
-                            # `current_exec_context` already contains all necessary files including the test script.
                             try:
-                                # Ensure the script to execute is part of the files_in_context, ADK tool might require this.
-                                # The command might be implicit if script_to_execute is a Python file.
                                 adk_exec_result: AdkCodeExecutionResult = self.code_executor_tool.execute(
-                                    script_to_execute=prep_test.test_script_path, # Path of script relative to sandbox root
+                                    script_to_execute=prep_test.test_script_path,
                                     files_in_context=current_exec_context,
-                                    command_args=["python", prep_test.test_script_path] # Example command
+                                    command_args=["python", prep_test.test_script_path]
                                 )
-
-                                # Adapt AdkCodeExecutionResult to the format expected by interpret_test_results
-                                # interpret_test_results expects List[Dict] with "test_script_path", "stdout", "stderr", "process_success"
-                                adapted_result = {
+                                adapted_result: Dict[str, Any] = {
                                     "test_script_path": prep_test.test_script_path,
                                     "stdout": adk_exec_result.stdout,
                                     "stderr": adk_exec_result.stderr,
-                                    "process_success": adk_exec_result.success # ADK 'success' might mean process ran
+                                    "process_success": adk_exec_result.success
                                 }
-                                if adk_exec_result.error_message or adk_exec_result.exit_code != 0:
-                                    # If ADK tool indicates specific execution error, ensure process_success reflects that.
-                                    if not adk_exec_result.success: # If ADK tool already marked it as not successful
+                                if adk_exec_result.error_message or (adk_exec_result.exit_code is not None and adk_exec_result.exit_code != 0):
+                                    if not adk_exec_result.success:
                                          adapted_result["process_success"] = False
-                                    # If ADK success is true, but there's stderr or non-zero exit, it might still be a script failure
-                                    # For now, trust adk_exec_result.success for process_success
                                 raw_exec_results.append(adapted_result)
-
                             except Exception as adk_exec_e:
                                 print(f"    ADK Code Execution tool failed: {adk_exec_e}")
                                 raw_exec_results.append({
@@ -278,11 +275,11 @@ class MainSequentialAgent(SequentialAgent):
                                     "process_success": False
                                 })
 
-                        # Interpret Test Results (this part remains largely the same)
                         print(f"    Interpreting test results...")
-                        interpret_input = InterpretTestResultsInput(executed_tests_results=raw_exec_results)
+                        interpret_input: InterpretTestResultsInput = InterpretTestResultsInput(executed_tests_results=raw_exec_results)
                         try:
-                            interpreted_results_output = self.testing_tool.interpret_test_results(interpret_input)
+                            # Assuming interpret_test_results returns InterpretTestResultsOutput
+                            interpreted_results_output: InterpretTestResultsOutput = self.testing_tool.interpret_test_results(interpret_input)
                             task_test_results_summary = [res.model_dump() for res in interpreted_results_output.failed_tests + interpreted_results_output.successful_tests]
                             print(f"    Test interpretation complete. Failures: {len(interpreted_results_output.failed_tests)}, Successes: {len(interpreted_results_output.successful_tests)}")
                         except Exception as e:
@@ -292,36 +289,32 @@ class MainSequentialAgent(SequentialAgent):
 
                         if not interpreted_results_output.failed_tests:
                             print(f"  All tests passed for task {task.id}. Moving to next task.")
-                            break # Exit refinement loop, code is good
+                            break
                         else:
                             print(f"  {len(interpreted_results_output.failed_tests)} test(s) failed. Attempting refinement...")
-                            # Prepare input for code refinement
-                            # For simplicity, concatenate all failed test messages as feedback.
-                            # A more sophisticated approach might select specific feedback.
-                            feedback_str = "\n".join([
-                                f"Test Script: {f.test_script_path}\nMessage: {f.message}"
+                            feedback_str: str = "\n".join([
+                                f"Test Script: {f.test_script_path}\nMessage: {f.message}" # f is InterpretedTestResult
                                 for f in interpreted_results_output.failed_tests
                             ])
-
-                            refine_input = RefineCodeInput(
-                                current_code=current_task_code_changes, # Pass the code that was just tested
-                                test_script="Multiple tests - see feedback.", # Placeholder, specific script content could be complex here
+                            refine_input: RefineCodeInput = RefineCodeInput(
+                                current_code=current_task_code_changes,
+                                test_script="Multiple tests - see feedback.",
                                 test_feedback=feedback_str,
                                 original_task_description=task.description
                             )
                             try:
                                 refined_code_output: GeneratedCode = self.code_generation_tool.refine_code_from_test_feedback(refine_input)
                                 current_task_code_changes = refined_code_output.code_changes
-                                self._update_codebase_state(current_task_code_changes) # Update global state with refined code
+                                if current_task_code_changes is not None: # Ensure not None before update
+                                    self._update_codebase_state(current_task_code_changes)
                                 print(f"  Code refined for task {task.id}: {current_task_code_changes}")
                             except Exception as e:
                                 print(f"    Error during code refinement: {e}")
                                 final_results["errors"].append(f"Code refinement failed for {task.id}: {str(e)}")
-                                break # Exit refinement loop if refinement fails
-                    else: # Else for the for loop (if MAX_REFINEMENT_ITERATIONS reached)
+                                break
+                    else:
                         print(f"  Max refinement iterations reached for task {task.id}. Using last generated code.")
 
-                    # Add the final code for this task to the overall list
                     if current_task_code_changes:
                         all_task_generated_code.extend(current_task_code_changes)
                     final_results["test_summary"].append({
@@ -329,28 +322,36 @@ class MainSequentialAgent(SequentialAgent):
                         "description": task.description,
                         "results": task_test_results_summary
                     })
-
-                else: # Other task types (documentation, analysis, etc.)
+                else:
                     print(f"  Skipping task {task.id} of type {task.task_type} (not code_implementation).")
 
         # Step 3: Aggregate and Return Results
         print("\n--- Step 3: Aggregation and Results ---")
-        # Consolidate unique code changes from all_task_generated_code
-        # If multiple tasks touched the same file, the last version (from current_codebase_state) is the effective one.
         final_code_changes_map: Dict[str, CodeChange] = {}
-        for path, content in self.current_codebase_state.items():
-            # Only include files that were part of the initial codebase or were modified.
-            # This check is tricky: new files created by tasks should be included.
-            # For simplicity, let's just list all files in the final state that were part of a CodeChange operation.
-            # A more robust way is to track which files were actually 'touched' by code generation.
-            # The `all_task_generated_code` list helps here.
-            is_new_or_changed = any(cc.path == path for cc in all_task_generated_code)
-            initial_paths = {cf.path for cf in initial_codebase}
-            if path in initial_paths and self.current_codebase_state[path] != next(cf.content for cf in initial_codebase if cf.path == path):
-                 is_new_or_changed = True # It was changed from initial
+        # Determine final code changes based on the accumulated `all_task_generated_code`
+        # and the final `current_codebase_state`.
+        # A file is considered changed if its path appears in any CodeChange object generated
+        # during the tasks, and its final content in current_codebase_state is different
+        # from its initial state (if it existed) or it's a new file.
 
-            if is_new_or_changed :
-                 final_code_changes_map[path] = CodeChange(path=path, code=content)
+        initial_code_content_map: Dict[str, str] = {cf.path: cf.content for cf in initial_codebase}
+
+        # Paths that were subject to any code generation attempt
+        touched_paths: set[str] = {cc.path for cc in all_task_generated_code}
+
+        for path, current_content in self.current_codebase_state.items():
+            initial_content = initial_code_content_map.get(path)
+            # Include if:
+            # 1. It's a new file that was touched by a task.
+            # 2. It's an existing file whose content has changed.
+            # 3. It was touched (e.g. an attempt was made to modify it) even if content didn't change (edge case, might include unchanged files if logic isn't precise)
+            # For simplicity here, if a path was part of any code_change operation, and its current content
+            # is different from initial (or it's new), include it.
+            if path in touched_paths and (initial_content is None or current_content != initial_content):
+                final_code_changes_map[path] = CodeChange(path=path, code=current_content)
+            elif initial_content is None and path in touched_paths : # New file explicitly created
+                 final_code_changes_map[path] = CodeChange(path=path, code=current_content)
+
 
         final_results["final_code_changes"] = [cc.model_dump() for cc in final_code_changes_map.values()]
         print("--- MainSequentialAgent: Run finished ---")
@@ -358,43 +359,37 @@ class MainSequentialAgent(SequentialAgent):
 
 
 # --- Main Execution Block for Rudimentary Testing ---
+# Define a single fallback executor class for the test block
+class TestPlaceholderFallbackAdkCodeExecutor:
+    def execute(self, script_to_execute: str, files_in_context: Dict[str, str], command_args: Optional[List[str]] = None) -> AdkCodeExecutionResult:
+        print(f"TestPlaceholderFallbackAdkCodeExecutor.execute for {script_to_execute} with args {command_args}")
+        # Provide a more detailed mock response if needed for testing specific scenarios
+        if "test_file_a.py" in script_to_execute: # Example: simulate test output
+            return AdkCodeExecutionResult(success=True, stdout=".", stderr="", exit_code=0)
+        return AdkCodeExecutionResult(success=True, stdout="Test Fallback output", stderr="", exit_code=0)
+
 if __name__ == "__main__":
     print("--- Starting MainSequentialAgent Test ---")
 
-    # 1. Instantiate mock/placeholder LLMInterface and Tools
-    mock_llm = GlobalLLMInterface(api_key="dummy_sequential_agent_key", model_name="sequential_model", temperature=0.2)
+    mock_llm: GlobalLLMInterface = GlobalLLMInterface(api_key="dummy_sequential_agent_key", model_name="sequential_model", temperature=0.2)
 
-    planning_tool_inst = PlanningTool(llm_interface=mock_llm)
-    coding_tool_inst = CodeGenerationTool(llm_interface=mock_llm)
-    testing_tool_inst = TestExecutionTool(llm_interface=mock_llm)
+    planning_tool_inst: PlanningTool = PlanningTool(llm_interface=mock_llm)
+    coding_tool_inst: CodeGenerationTool = CodeGenerationTool(llm_interface=mock_llm)
+    testing_tool_inst: TestExecutionTool = TestExecutionTool(llm_interface=mock_llm)
 
-    # HYPOTHETICAL: Instantiate the real ADK Code Execution tool (or its placeholder if not found)
+    code_exec_tool_inst: AdkBuiltInCodeExecutionTool # Type hint for clarity
     try:
-        # Attempt to instantiate the real tool if it were found and didn't need complex setup
-        # For example, if it takes no arguments or simple ones:
-        # code_exec_tool_inst = AdkBuiltInCodeExecutionTool()
-        # If it needs specific config (e.g., runtime environment), this might fail.
-        # For this test, we'll stick to its placeholder version if the real one isn't fully usable.
-        if "AdkBuiltInCodeExecutionTool" in globals() and not isinstance(AdkBuiltInCodeExecutionTool(), type(SequentialAgent)): # Check if it's not the placeholder class
+        # Check if the 'real' AdkBuiltInCodeExecutionTool is not just the placeholder definition
+        if "AdkBuiltInCodeExecutionTool" in globals() and \
+           not type(AdkBuiltInCodeExecutionTool) == type(SequentialAgent): # Heuristic: if it's not the placeholder class itself
              print("Attempting to use 'real' AdkBuiltInCodeExecutionTool for test.")
-             code_exec_tool_inst = AdkBuiltInCodeExecutionTool() # Potentially with args if known
+             code_exec_tool_inst = AdkBuiltInCodeExecutionTool()
         else:
-            print("Using placeholder AdkBuiltInCodeExecutionTool for test.")
-            # Fallback to a placeholder if the real one is still the class placeholder_adk.AdkBuiltInCodeExecutionTool
-            class PlaceholderFallbackAdkCodeExecutor:
-                 def execute(self, script_to_execute: str, files_in_context: Dict[str, str], command_args: Optional[List[str]] = None) -> 'AdkCodeExecutionResult':
-                    print(f"PlaceholderFallbackAdkCodeExecutor.execute for {script_to_execute}")
-                    return AdkCodeExecutionResult(success=True, stdout="Fallback output", stderr="", exit_code=0)
-            code_exec_tool_inst = PlaceholderFallbackAdkCodeExecutor()
-
+            print("Using placeholder AdkBuiltInCodeExecutionTool (TestPlaceholderFallback) for test.")
+            code_exec_tool_inst = TestPlaceholderFallbackAdkCodeExecutor() # type: ignore # Assigning specific test placeholder
     except Exception as e:
-        print(f"Could not instantiate AdkBuiltInCodeExecutionTool, using placeholder: {e}")
-        class PlaceholderFallbackAdkCodeExecutor: # Duplicated for safety if above check fails
-             def execute(self, script_to_execute: str, files_in_context: Dict[str, str], command_args: Optional[List[str]] = None) -> 'AdkCodeExecutionResult':
-                print(f"PlaceholderFallbackAdkCodeExecutor.execute for {script_to_execute}")
-                return AdkCodeExecutionResult(success=True, stdout="Fallback output", stderr="", exit_code=0)
-        code_exec_tool_inst = PlaceholderFallbackAdkCodeExecutor()
-
+        print(f"Could not instantiate AdkBuiltInCodeExecutionTool, using TestPlaceholderFallback: {e}")
+        code_exec_tool_inst = TestPlaceholderFallbackAdkCodeExecutor() # type: ignore
 
     # 2. Instantiate MainSequentialAgent
     try:

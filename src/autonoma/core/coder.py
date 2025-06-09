@@ -1,33 +1,42 @@
 """CoderAgent module for the Autonoma package."""
 
-from typing import Any
-from autonoma.models import Agent, Task, GeneratedCode
+from typing import Optional, Protocol
+# Updated model imports to reflect their new locations
+from autonoma.models.agent import Agent
+from autonoma.models.task import Task
+from autonoma.models.code import GeneratedCode
+
+
+class LLMInterfaceProtocol(Protocol):
+    """Protocol for Language Model Interface."""
+    def generate(self, user_prompt: str, system_prompt: Optional[str] = None, temperature: float = 0.7, max_tokens: int = 150) -> str:
+        ...
 
 
 class CoderAgent:
     """
-    CoderAgent for generating and modifying code.
+    CoderAgent uses an LLM to generate and modify code based on tasks and test results.
     """
 
-    def __init__(self, llm_interface: Any):
+    def __init__(self, llm_interface: LLMInterfaceProtocol):
         """
         Initialize the CoderAgent.
 
         Args:
-            llm_interface: An interface to the language model for generating responses.
+            llm_interface: A language model interface conforming to LLMInterfaceProtocol.
         """
-        self.llm_interface = llm_interface
+        self.llm_interface: LLMInterfaceProtocol = llm_interface
 
     def generate_code(self, task: Task, agent: Agent) -> GeneratedCode:
         """
-        Generate code based on the given task and existing code.
+        Generates code to fulfill the given task's requirements.
 
         Args:
-            task: The task containing code modification instructions.
-            agent: The agent requesting the code generation.
+            task: The task detailing the code to be generated and relevant existing code.
+            agent: The agent profile to guide the LLM's response style.
 
         Returns:
-            A GeneratedCode object containing the generated code changes.
+            A GeneratedCode object parsed from the LLM's JSON response.
         """
         user_prompt = f"""
         Write Python code to accomplish the following task:
@@ -47,23 +56,23 @@ class CoderAgent:
         Act as the following agent:
         {agent.json()}
         """
-        response = self.llm_interface.generate(user_prompt=user_prompt, system_prompt=system_prompt)
+        response: str = self.llm_interface.generate(user_prompt=user_prompt, system_prompt=system_prompt)
         return GeneratedCode.parse_raw(response)
 
     def modify_code_based_on_test(
         self, code: GeneratedCode, test: str, test_result: str, task: Task
     ) -> GeneratedCode:
         """
-        Modify code based on test results.
+        Modifies existing code based on failing test results.
 
         Args:
-            code: The current code represented as a GeneratedCode object.
-            test: The test code that failed.
-            test_result: The result of the failed test.
-            task: The original task containing the description.
+            code: The current GeneratedCode object to be modified.
+            test: The source code of the failing test.
+            test_result: The output or error message from the failing test.
+            task: The original task description, for context.
 
         Returns:
-            A GeneratedCode object containing the modified code changes.
+            A GeneratedCode object with proposed modifications, parsed from the LLM's JSON response.
         """
         user_prompt = f"""
         Modify the following Python code to pass the given test:
@@ -98,5 +107,5 @@ class CoderAgent:
         Ensure you mock all the imports.
         """
 
-        response = self.llm_interface.generate(user_prompt=user_prompt, system_prompt=system_prompt)
+        response: str = self.llm_interface.generate(user_prompt=user_prompt, system_prompt=system_prompt)
         return GeneratedCode.parse_raw(response)

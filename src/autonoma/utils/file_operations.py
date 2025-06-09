@@ -3,7 +3,9 @@
 import os
 import json
 from typing import Dict, List
-from autonoma.models import FinalResult, AgentResult
+# Updated model imports to reflect their new locations
+from autonoma.models.result import FinalResult, AgentResult
+from autonoma.models.code import CodeFile
 
 
 def store_results(final_result: FinalResult) -> None:
@@ -15,19 +17,24 @@ def store_results(final_result: FinalResult) -> None:
     """
     os.makedirs(final_result.output_directory, exist_ok=True)
 
-    # Store project details
+    # Store project details (project is ExecutedProject, which is fine for .dict())
     with open(f"{final_result.output_directory}/project.json", "w") as f:
-        json.dump(final_result.project_result.project.dict(), f, indent=2)
+        json.dump(final_result.project_result.project.model_dump(), f, indent=2) # Use model_dump()
 
-    # Store modified files
-    for file_path, content in final_result.project_result.modified_files.items():
-        with open(f"{final_result.output_directory}/{file_path}", "w") as f:
-            f.write(content)
+    # Store modified files (ProjectResult.modified_files is List[CodeFile])
+    for code_file in final_result.project_result.modified_files:
+        # Ensure directory for path exists if path includes subdirectories
+        file_full_path = os.path.join(final_result.output_directory, code_file.path)
+        os.makedirs(os.path.dirname(file_full_path), exist_ok=True)
+        with open(file_full_path, "w") as f:
+            f.write(code_file.content)
 
-    # Store new files
-    for file_path, content in final_result.project_result.new_files.items():
-        with open(f"{final_result.output_directory}/{file_path}", "w") as f:
-            f.write(content)
+    # Store new files (ProjectResult.new_files is List[CodeFile])
+    for code_file in final_result.project_result.new_files:
+        file_full_path = os.path.join(final_result.output_directory, code_file.path)
+        os.makedirs(os.path.dirname(file_full_path), exist_ok=True)
+        with open(file_full_path, "w") as f:
+            f.write(code_file.content)
 
     # Store thought process
     with open(f"{final_result.output_directory}/thought_process.txt", "w") as f:

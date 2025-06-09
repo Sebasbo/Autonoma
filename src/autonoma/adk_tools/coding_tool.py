@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 # from adk.tool_registry import FunctionTool
 
 # Import necessary models
-from autonoma.models.coder import CodeChange, GeneratedCode # Replaces CodeChangeModel and is used for outputs
+from autonoma.models.code import CodeChange, GeneratedCode # Updated: Was models.coder
 
 # Placeholder for LLMInterface - replace with actual interface
 class LLMInterface:

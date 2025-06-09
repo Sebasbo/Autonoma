@@ -1,27 +1,39 @@
 """Tester module for the Autonoma package."""
 
 import json
-from typing import List, Tuple
-from pydantic import BaseModel
+from typing import List, Tuple, Optional, Protocol
+from pydantic import BaseModel # Keep for local TestCodeResponse if not moved
 from ..utils.code_executor import CodeExecutor
-from autonoma.models import CodeFile, TestCodeResponse, TestResult, CodeChange, GeneratedCode
+
+# Updated model imports to reflect their new locations
+from autonoma.models.code import CodeFile, GeneratedCode, CodeChange
+from autonoma.models.result import TestResult
+# Assuming TestCodeResponse might be a local definition or from a non-relocated model path for now
+# If TestCodeResponse is a shared model, its import might need to point to models.test or similar
+from autonoma.models import TestCodeResponse # Placeholder if it's in models/__init__.py
+
+
+class LLMInterfaceProtocol(Protocol):
+    """Protocol for Language Model Interface."""
+    def generate(self, user_prompt: str, system_prompt: Optional[str] = None, temperature: float = 0.7, max_tokens: int = 150) -> str:
+        ...
 
 
 class Tester:
     """Tester class for running tests on modified code."""
 
-    def __init__(self, llm_interface):
+    def __init__(self, llm_interface: LLMInterfaceProtocol):
         """
         Initialize the Tester.
 
         Args:
             llm_interface: An interface to the language model for generating test code.
         """
-        self.llm_interface = llm_interface
+        self.llm_interface: LLMInterfaceProtocol = llm_interface
         self.code_executor = CodeExecutor()
 
     def run_tests(
-        self, modified_code: "GeneratedCode", codebase: List[CodeFile]
+        self, modified_code: GeneratedCode, codebase: List[CodeFile]
     ) -> Tuple[List[TestResult], List[TestResult]]:
         """
         Run tests on the modified code.
@@ -33,32 +45,34 @@ class Tester:
         Returns:
             A tuple containing lists of unsuccessful and successful test results.
         """
-        test_code_response = self.generate_test_code(modified_code)
+        test_code_response: TestCodeResponse = self.generate_test_code(modified_code)
 
-        unsuccessful_tests, successful_tests = [], []
-        for test_code in test_code_response.tests:
+        unsuccessful_tests: List[TestResult] = []
+        successful_tests: List[TestResult] = []
+        for test_code_item in test_code_response.tests: # Assuming TestCodeResponse has a 'tests' attribute
             updated_codebase = {file.path: file.content for file in codebase}
             for file_change in modified_code.code_changes:
                 updated_codebase[file_change.path] = file_change.code
 
-            full_code = test_code.test_code
-            result = self.code_executor.run(full_code, updated_codebase)
+            full_code_to_execute = test_code_item.test_code # Assuming test_code_item has 'test_code'
+            # Ensure CodeExecutor.run returns a structure compatible with this logic
+            execution_result = self.code_executor.run(full_code_to_execute, updated_codebase)
 
-            test_result = TestResult(
-                success=result.success,
-                message=result.output,
-                test_code=test_code.test_code,
-                original_code_path=test_code.original_code_path,
+            test_result_obj = TestResult(
+                success=execution_result.success,
+                message=execution_result.output, # Or error, depending on CodeExecutor's result structure
+                test_code=test_code_item.test_code,
+                original_code_path=test_code_item.original_code_path, # Assuming test_code_item has 'original_code_path'
             )
 
-            if not result.success:
-                unsuccessful_tests.append(test_result)
+            if not execution_result.success:
+                unsuccessful_tests.append(test_result_obj)
             else:
-                successful_tests.append(test_result)
+                successful_tests.append(test_result_obj)
 
         return unsuccessful_tests, successful_tests
 
-    def generate_test_code(self, code: "GeneratedCode") -> TestCodeResponse:
+    def generate_test_code(self, code: GeneratedCode) -> TestCodeResponse:
         """
         Generate test code for the given code.
 
@@ -97,23 +111,12 @@ class Tester:
 
         Do not use any import statements other than for the unittest module.
         """
-        response = self.llm_interface.generate(prompt)
+        response: str = self.llm_interface.generate(prompt)
         try:
+            # Assuming TestCodeResponse is a Pydantic model that can parse this
             parsed_response = json.loads(response)
             return TestCodeResponse(**parsed_response)
-        except json.JSONDecodeError:
-            raise ValueError(f"Failed to parse LLM response as JSON. Raw response: {response}")
-
-
-# This should be imported from the appropriate module
-class GeneratedCode(BaseModel):
-    """Represents the generated code from the LLM."""
-
-    code_changes: List[CodeChange]
-
-
-class CodeChange(BaseModel):
-    """Represents a code change in a specific file."""
-
-    code: str
-    path: str
+        except json.JSONDecodeError as e:
+            # It's good practice to include the original error for context
+            raise ValueError(f"Failed to parse LLM response as JSON. Raw response: {response}. Error: {e}")
+# Removed local redefinitions of GeneratedCode and CodeChange as they are now imported.

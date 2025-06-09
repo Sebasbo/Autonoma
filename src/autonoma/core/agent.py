@@ -1,98 +1,89 @@
 """Core agent module for the Autonoma package."""
 
-from typing import List, Any
-from autonoma.models import (
-    Project, # Keep for ProjectResult, though MainSequentialAgent produces a dict
-    # Agent, Task, TaskType, PlanRequest - No longer directly used here
-    CodeFile,
-    ProjectResult,
-    # AgentResult, TaskResult - No longer directly used here
-    FinalResult,
-    # ExecutedProject, # Removed this problematic import
-)
-# from .planner import PlannerAgent # Removed
-# from .coder import CoderAgent # Removed
-# from .tester import Tester # Removed
+from typing import List, Any, Protocol, Dict, Optional
+# Updated model imports to reflect their new locations
+from autonoma.models.project import ExecutedProject
+from autonoma.models.code import CodeFile
+from autonoma.models.result import ProjectResult, FinalResult
 
 from autonoma.adk_agents.main_sequential_agent import (
     MainSequentialAgent,
-    # GlobalLLMInterface,
-    # AdkCodeExecutorToolPlaceholder, # No longer used, replaced by AdkBuiltInCodeExecutionTool
-    AdkBuiltInCodeExecutionTool # Hypothetical real ADK tool
+    AdkBuiltInCodeExecutionTool
 )
 from autonoma.adk_tools.planning_tool import PlanningTool
 from autonoma.adk_tools.coding_tool import CodeGenerationTool
 from autonoma.adk_tools.testing_tool import TestExecutionTool
 
-from autonoma.utils.file_operations import store_results # get_modified_files, get_new_files are effectively replaced
+from autonoma.utils.file_operations import store_results
 from autonoma.utils.reflection import Reflector
+
+
+class LLMInterfaceProtocol(Protocol):
+    """Protocol for Language Model Interface."""
+    def generate(self, user_prompt: str, system_prompt: Optional[str] = None, temperature: float = 0.7, max_tokens: int = 150) -> str:
+        ...
 
 
 class AutonomaAgent:
     """
     Main agent class for the Autonoma system.
-    This class now orchestrates the MainSequentialAgent (ADK-style).
+    Orchestrates the MainSequentialAgent (ADK-style) for processing queries.
     """
 
-    def __init__(self, llm_interface: Any): # llm_interface could be GlobalLLMInterface or compatible
+    def __init__(self, llm_interface: LLMInterfaceProtocol):
         """
         Initialize the AutonomaAgent.
 
         Args:
-            llm_interface: An interface to the language model for generating responses.
-                           This should be compatible with what the ADK tools expect.
+            llm_interface: An interface to the language model, conforming to LLMInterfaceProtocol.
         """
-        self.llm_interface = llm_interface # This might need to be an instance of GlobalLLMInterface
+        self.llm_interface: LLMInterfaceProtocol = llm_interface
+        self.reflector: Reflector = Reflector()
 
         # Instantiate ADK tools
-        # Ensure llm_interface is compatible with what tools expect (e.g. has .generate method)
-        planning_tool = PlanningTool(llm_interface=llm_interface)
-        code_generation_tool = CodeGenerationTool(llm_interface=llm_interface)
-        testing_tool = TestExecutionTool(llm_interface=llm_interface)
+        planning_tool: PlanningTool = PlanningTool(llm_interface=self.llm_interface)
+        code_generation_tool: CodeGenerationTool = CodeGenerationTool(llm_interface=self.llm_interface)
+        testing_tool: TestExecutionTool = TestExecutionTool(llm_interface=self.llm_interface)
 
-        # HYPOTHETICAL: Instantiate the real ADK Code Execution Tool
-        # This might require specific configurations or parameters based on the actual ADK library.
-        # For now, assume a simple instantiation or use its placeholder if direct instantiation is complex/unknown.
+        code_executor_tool: Any # Define type more broadly due to fallbacks
+        # Instantiate the ADK Code Execution Tool
+        # This try-except block handles potential issues with initializing the tool,
+        # falling back to a placeholder if the primary tool cannot be instantiated.
         try:
-            # Check if AdkBuiltInCodeExecutionTool is the actual class or still the placeholder from main_sequential_agent
-            # This check is a bit indirect; ideally, we'd know if the real one was successfully imported.
+            # Check if AdkBuiltInCodeExecutionTool is a functional class rather than a basic object.
+            # This helps determine if the intended tool was successfully imported and is not a placeholder.
             if "AdkBuiltInCodeExecutionTool" in globals() and \
                hasattr(globals()["AdkBuiltInCodeExecutionTool"], 'execute') and \
-               not type(globals()["AdkBuiltInCodeExecutionTool"].__init__) == type(type.__init__): # Avoid instantiating if it's just `object`
+               not type(globals()["AdkBuiltInCodeExecutionTool"].__init__) == type(type.__init__):
                  print("AutonomaAgent: Attempting to use 'real' AdkBuiltInCodeExecutionTool.")
-                 code_executor_tool = AdkBuiltInCodeExecutionTool() # Or with args if known
+                 code_executor_tool = AdkBuiltInCodeExecutionTool()
             else:
-                print("AutonomaAgent: Using placeholder AdkBuiltInCodeExecutionTool due to import fallback.")
-                # This placeholder is defined in main_sequential_agent if real import fails
-                code_executor_tool = globals().get("AdkBuiltInCodeExecutionTool", AdkCodeExecutorToolPlaceholder)() # Fallback
+                print("AutonomaAgent: Using placeholder for AdkBuiltInCodeExecutionTool due to import/definition issues.")
+                # The placeholder might be defined in main_sequential_agent if the real import fails.
+                # Attempt to get it from globals, or define a local fallback if not found.
+                # AdkCodeExecutorToolPlaceholder was removed, so we rely on a local fallback or direct AdkBuiltInCodeExecutionTool.
+                class PlaceholderAdkCodeExecutor:
+                     def execute(self, script_to_execute: str, files_in_context: Dict[str, str], command_args: Optional[List[str]] = None) -> Dict[str, Any]: # type: ignore
+                        print(f"PlaceholderAdkCodeExecutor.execute for {script_to_execute}")
+                        # Return a dictionary matching the expected structure of AdkCodeExecutionResult.
+                        return {"success": True, "stdout": "Placeholder fallback output", "stderr": "", "exit_code": 0}
+                code_executor_tool = PlaceholderAdkCodeExecutor()
         except Exception as e:
             print(f"AutonomaAgent: Error instantiating AdkBuiltInCodeExecutionTool, falling back. Error: {e}")
-            # Define a local fallback if even the imported placeholder fails (should not happen if main_sequential_agent is robust)
+            # Define a local fallback if instantiation fails.
             class LocalFallbackAdkCodeExecutor:
-                 def execute(self, script_to_execute: str, files_in_context: Dict[str, str], command_args: Optional[List[str]] = None):
+                 def execute(self, script_to_execute: str, files_in_context: Dict[str, str], command_args: Optional[List[str]] = None) -> Dict[str, Any]: # type: ignore
                     print(f"LocalFallbackAdkCodeExecutor.execute for {script_to_execute}")
-                    # Must return an object that matches AdkCodeExecutionResult structure used in MainSequentialAgent
-                    # This requires AdkCodeExecutionResult to be available here or define a compatible one.
-                    # For simplicity, assume AdkCodeExecutionResult is globally available via main_sequential_agent imports.
-                    from autonoma.adk_agents.main_sequential_agent import AdkCodeExecutionResult # Ensure available
-                    return AdkCodeExecutionResult(success=True, stdout="Local fallback output", stderr="", exit_code=0)
+                    return {"success": True, "stdout": "Local fallback output", "stderr": "", "exit_code": 0}
             code_executor_tool = LocalFallbackAdkCodeExecutor()
 
-
-        # Instantiate MainSequentialAgent
-        self.main_adk_agent = MainSequentialAgent(
-            llm_interface=llm_interface,
+        self.main_adk_agent: MainSequentialAgent = MainSequentialAgent(
+            llm_interface=self.llm_interface,
             planning_tool=planning_tool,
             code_generation_tool=code_generation_tool,
             testing_tool=testing_tool,
-            code_executor_tool=code_executor_tool # Pass the real or placeholder ADK tool
+            code_executor_tool=code_executor_tool
         )
-
-        self.reflector = Reflector()
-        # self.planner_agent = PlannerAgent(llm_interface) # Removed
-        # self.coder_agent = CoderAgent(llm_interface) # Removed
-        # self.tester = Tester(llm_interface) # Removed
-
 
     def process_query(self, query: str, code_base: List[CodeFile]) -> FinalResult:
         """
@@ -107,212 +98,70 @@ class AutonomaAgent:
         """
         self.reflector.reflect(f"Processing query via MainSequentialAgent: {query}")
 
-        raw_adk_result: Dict = self.main_adk_agent.run(query=query, initial_codebase=code_base)
+        # The ADK agent returns a dictionary.
+        raw_adk_result: Dict[str, Any] = self.main_adk_agent.run(query=query, initial_codebase=code_base)
 
-        # Adapt raw_adk_result (Dict) to ProjectResult model
-        final_code_changes_dicts = raw_adk_result.get("final_code_changes", [])
-        # Ensure final_code_changes_dicts are actual dicts if they come from Pydantic models
-        processed_final_code_changes = []
-        for item in final_code_changes_dicts:
+        # Adapt raw_adk_result (Dict) to ProjectResult model fields.
+        # final_code_changes are expected to be a list of dicts like {'path': '...', 'code': '...'}
+        # or Pydantic models that can be dumped to such dicts.
+        final_code_changes_raw: List[Any] = raw_adk_result.get("final_code_changes", [])
+
+        processed_final_code_changes_dicts: List[Dict[str, str]] = []
+        item: Any
+        for item in final_code_changes_raw:
             if hasattr(item, 'model_dump'): # Check if it's a Pydantic model
-                processed_final_code_changes.append(item.model_dump())
-            else: # Assume it's already a dict
-                processed_final_code_changes.append(item)
+                processed_final_code_changes_dicts.append(item.model_dump())
+            elif isinstance(item, dict): # Assume it's already a dict
+                processed_final_code_changes_dicts.append(item)
+            else:
+                # Handle unexpected item type, perhaps log a warning or error
+                print(f"Warning: Unexpected item type in final_code_changes: {type(item)}")
+                continue
 
-        # Explicitly map dictionary keys to CodeFile fields
-        modified_code_files: List[CodeFile] = [
+
+        # Convert dicts to CodeFile objects
+        all_resulting_code_files: List[CodeFile] = [
             CodeFile(path=cf_dict['path'], content=cf_dict['code'])
-            for cf_dict in processed_final_code_changes
+            for cf_dict in processed_final_code_changes_dicts
+            if 'path' in cf_dict and 'code' in cf_dict # Basic validation
         ]
 
-        initial_paths = {cf.path for cf in code_base}
-        modified_paths = {mcf.path for mcf in modified_code_files}
+        initial_code_map: Dict[str, str] = {cf.path: cf.content for cf in code_base}
+        initial_paths: set[str] = set(initial_code_map.keys())
 
-        new_files_list: List[CodeFile] = [mcf for mcf in modified_code_files if mcf.path not in initial_paths]
+        new_files_list: List[CodeFile] = []
+        truly_modified_codefiles_list: List[CodeFile] = []
 
-        actually_modified_files_list: List[CodeFile] = [
-            mcf for mcf in modified_code_files if mcf.path in initial_paths and mcf.path in modified_paths
+        rcf: CodeFile
+        for rcf in all_resulting_code_files:
+            if rcf.path not in initial_paths:
+                new_files_list.append(rcf)
+            elif initial_code_map[rcf.path] != rcf.content:
+                truly_modified_codefiles_list.append(rcf)
+
+        # Unchanged files are those in the initial codebase not present in new or modified lists.
+        modified_and_new_paths: set[str] = {cf.path for cf in new_files_list} | {cf.path for cf in truly_modified_codefiles_list}
+
+        unchanged_files_list: List[CodeFile] = [
+            cf for cf in code_base if cf.path not in modified_and_new_paths
         ]
 
-        unchanged_files_dict: Dict[str, str] = {
-            cf.path: cf.content for cf in code_base if cf.path not in modified_paths
-        }
+        # ProjectResult expects ExecutedProject for its 'project' field.
+        project_for_result: ExecutedProject = ExecutedProject(agents=[]) # Create an empty ExecutedProject
 
-        # Ensure paths in actually_modified_files_list are truly modified compared to initial state
-        # This step is crucial if final_code_changes from ADK agent might include unchanged files.
-        # Assuming final_code_changes ONLY includes changed/new files.
-
-        initial_code_map = {cf.path: cf.content for cf in code_base}
-
-        # Determine truly modified files (as List[CodeFile])
-        truly_modified_codefiles_list = []
-        for mcf in actually_modified_files_list: # actually_modified_files_list is List[CodeFile]
-            if mcf.path in initial_code_map and initial_code_map[mcf.path] != mcf.content:
-                truly_modified_codefiles_list.append(mcf)
-            # If mcf.path is not in initial_code_map, it's a new file, handled by new_files_list.
-            # This ensures `truly_modified_codefiles_list` only contains files that existed and were changed.
-
-        # new_files_list is already List[CodeFile]
-        # unchanged_files_dict is already Dict[str, str]
-
-        # Convert lists to dicts for ProjectResult, as per hypothesized runtime model
-        modified_files_dict = {cf.path: cf.content for cf in truly_modified_codefiles_list}
-        new_files_dict = {cf.path: cf.content for cf in new_files_list}
-        # unchanged_files_dict is already in the correct format Dict[str, str]
-
-        # Use Project(agents=[]) instead of ExecutedProject
-        project_for_result = Project(agents=[])
-
-        project_result_obj = ProjectResult(
+        project_result_obj: ProjectResult = ProjectResult(
             project=project_for_result,
-            agent_results=[],
-            modified_files=modified_files_dict, # Changed to Dict[str, str]
-            new_files=new_files_dict,           # Changed to Dict[str, str]
-            unchanged_files=unchanged_files_dict, # Remains Dict[str, str]
+            agent_results=[], # MainSequentialAgent does not produce AgentResult list directly
+            modified_files=truly_modified_codefiles_list, # Should be List[CodeFile]
+            new_files=new_files_list,                     # Should be List[CodeFile]
+            unchanged_files=unchanged_files_list,         # Should be List[CodeFile]
             thought_process=self.reflector.thought_process
         )
 
-        final_result_obj = self.compile_results(project_result_obj)
-        # store_results might need to be aware of the new llm_interface if it logs to a file based on that
-        store_results(final_result_obj)
+        final_result_obj: FinalResult = self.compile_results(project_result_obj)
+        store_results(final_result_obj) # Assumes store_results is compatible
 
         return final_result_obj
-
-    # def execute_project(self, project: Project, code_base: List[CodeFile]) -> ProjectResult:
-    #     """
-    #     Execute a project against the given codebase.
-    #
-    #     Args:
-    #         project: The project to execute.
-    #         code_base: The codebase to execute the project against.
-    #
-    #     Returns:
-    #         A ProjectResult object containing the results of the project execution.
-    #     """
-    #     agent_results: List[AgentResult] = []
-    #
-    #     for agent in project.agents:
-    #         agent_result = self.execute_agent_tasks(agent, code_base)
-    #         agent_results.append(agent_result)
-    #
-    #     modified_files = get_modified_files(agent_results) # This helper would be problematic now
-    #
-    #     return ProjectResult(
-    #         project=project,
-    #         agent_results=agent_results,
-    #         modified_files=modified_files,
-    #         new_files=get_new_files(agent_results), # This helper would be problematic now
-    #         unchanged_files={
-    #             file.path: file.content for file in code_base if file.path not in modified_files
-    #         },
-    #         thought_process=self.reflector.thought_process,
-    #     )
-    #
-    # def execute_agent_tasks(self, agent: Agent, codebase: List[CodeFile]) -> AgentResult:
-    #     """
-    #     Execute the tasks of a single agent.
-    #
-    #     Args:
-    #         agent: The agent whose tasks are to be executed.
-    #         codebase: The codebase to execute the tasks against.
-    #
-    #     Returns:
-    #         An AgentResult object containing the results of the agent's task executions.
-    #     """
-    #     self.reflector.reflect(f"Executing tasks for agent: {agent.name}")
-    #     task_results: List[TaskResult] = []
-    #
-    #     for task in agent.tasks:
-    #         task_result = self.execute_task(task, agent, codebase)
-    #         task_results.append(task_result)
-    #
-    #     return AgentResult(agent_name=agent.name, task_results=task_results)
-    #
-    # def execute_task(self, task: Task, agent: Agent, codebase: List[CodeFile]) -> TaskResult:
-    #     """
-    #     Execute a single task.
-    #
-    #     Args:
-    #         task: The task to execute.
-    #         agent: The agent executing the task.
-    #         codebase: The codebase to execute the task against.
-    #
-    #     Returns:
-    #         A TaskResult object containing the results of the task execution.
-    #     """
-    #     self.reflector.reflect(f"Executing task: {task.description}")
-    #     if task.task_type == TaskType.CODE_IMPLEMENTATION: # TaskType would need to be imported or handled if used
-    #         return self.modify_code(task, agent, codebase)
-    #     else:
-    #         return self.execute_llm_task(task)
-    #
-    # def modify_code(self, task: Task, agent: Agent, codebase: List[CodeFile]) -> TaskResult:
-    #     """
-    #     Modify code based on the given task.
-    #
-    #     Args:
-    #         task: The task containing code modification instructions.
-    #         agent: The agent executing the task.
-    #         codebase: The codebase to modify.
-    #
-    #     Returns:
-    #         A TaskResult object containing the results of the code modification.
-    #     """
-    #     self.reflector.reflect(f"Modifying code in files: {', '.join(task.file_paths)}")
-    #     # modified_code = self.coder_agent.generate_code(task, agent) # Old CoderAgent
-    #
-    #     max_iterations = 3
-    #     iteration_count = 0
-    #
-    #     # This loop needs to be entirely rethought with ADK tools
-    #     # while iteration_count < max_iterations:
-    #         # unsuccessful_tests, successful_tests = self.tester.run_tests(modified_code, codebase) # Old Tester
-    #
-    #         # if not unsuccessful_tests:
-    #         #     self.reflector.reflect("All tests passed successfully.")
-    #         #     break
-    #         #
-    #         # self.reflector.reflect(
-    #         #     f"Iteration {iteration_count + 1}: {len(unsuccessful_tests)} tests failed. Attempting to fix..."
-    #         # )
-    #         #
-    #         # for test in unsuccessful_tests:
-    #         #     modified_code = self.coder_agent.modify_code_based_on_test( # Old CoderAgent
-    #         #         modified_code, test.test_code, test.message, task
-    #         #     )
-    #         #
-    #         # iteration_count += 1
-    #
-    #     # if iteration_count == max_iterations:
-    #     #     self.reflector.reflect("Maximum iterations reached. Some tests are still failing.")
-    #
-    #     # modified_files = {
-    #     #     file_change.path: file_change.code for file_change in modified_code.code_changes
-    #     # }
-    #
-    #     return TaskResult( # TaskResult model would need to be imported or adapted
-    #         task_id=task.id,
-    #         success=True, # Placeholder
-    #         output="Code modification process (now via ADK agent) complete for this task.",
-    #         modified_files={}, # Placeholder
-    #         test_results=[], # Placeholder
-    #     )
-    #
-    # def execute_llm_task(self, task: Task) -> TaskResult: # Task model would need to be imported
-    #     """
-    #     Execute a task using the language model.
-    #
-    #     Args:
-    #         task: The task to be executed by the language model.
-    #
-    #     Returns:
-    #         A TaskResult object containing the results of the language model execution.
-    #     """
-    #     self.reflector.reflect(f"Executing LLM task: {task.description}")
-    #     # result = self.llm_interface.generate(task.prompt_llm) # Assuming task has prompt_llm
-    #     # return TaskResult(task_id=task.id, success=True, output=result)
-    #     return TaskResult(task_id=task.id, success=True, output="LLM Task executed (placeholder).")
-
 
     def compile_results(self, project_result: ProjectResult) -> FinalResult:
         """
@@ -325,5 +174,6 @@ class AutonomaAgent:
             A FinalResult object containing the compiled results.
         """
         self.reflector.reflect("Compiling final results")
-        output_directory = "output"
+        # Consider making output_directory configurable or part of ProjectResult if needed elsewhere
+        output_directory: str = "output"
         return FinalResult(project_result=project_result, output_directory=output_directory)

@@ -1,21 +1,32 @@
 """PlannerAgent module for the Autonoma package."""
 
 import json
-from typing import List, Dict
-from autonoma.models import Project, TaskType, CodeFile, PlanRequest
+from typing import List, Dict, Optional, Protocol
+
+# Updated model imports to reflect their new locations
+from autonoma.models.project import Project
+from autonoma.models.task import TaskType
+from autonoma.models.code import CodeFile
+from autonoma.models.request import PlanRequest # Assuming PlanRequest is in request.py
+
+
+class LLMInterfaceProtocol(Protocol):
+    """Protocol for Language Model Interface."""
+    def generate(self, user_prompt: str, system_prompt: Optional[str] = None, temperature: float = 0.7, max_tokens: int = 150) -> str:
+        ...
 
 
 class PlannerAgent:
-    """PlannerAgent for creating query plans."""
+    """PlannerAgent for creating query plans using an LLM."""
 
-    def __init__(self, llm_interface):
+    def __init__(self, llm_interface: LLMInterfaceProtocol):
         """
         Initialize the PlannerAgent.
 
         Args:
-            llm_interface: An interface to the language model for generating plans.
+            llm_interface: A language model interface conforming to LLMInterfaceProtocol.
         """
-        self.llm_interface = llm_interface
+        self.llm_interface: LLMInterfaceProtocol = llm_interface
 
     def create_query_plan(self, plan_request: PlanRequest) -> Project:
         """

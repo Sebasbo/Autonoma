@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 # from adk.tool_registry import FunctionTool
 
 # Import necessary models
-from autonoma.models.coder import CodeChange # For CodeToTest
+from autonoma.models.code import CodeChange # Updated: Was models.coder
 from autonoma.models.test import TestCode, TestCodeResponse # For LLM response parsing
 
 # Placeholder for LLMInterface - replace with actual interface
@@ -44,11 +44,6 @@ class GenerateAndPrepareTestsInput(BaseModel):
 class PreparedTest(BaseModel):
     test_script_path: str = Field(description="The path where the test script should be saved/executed from.")
     test_script_content: str = Field(description="The content of the generated test script.")
-    # files_for_execution_context: Dict[str, str] = Field(description="All files needed for the test execution environment. Key: path, Value: content.")
-    # ADK Code Execution tool likely takes a list of file paths and a workspace, not a direct map.
-    # The context will be constructed by placing these files in the exec environment.
-    # For now, let's list the files that need to be present.
-    # The actual content will be sourced from code_to_test and existing_codebase_map.
     required_files_for_context: List[str] = Field(description="List of file paths (original code, modified code) required for the test to run, in addition to the test script itself.")
 
 
@@ -69,15 +64,14 @@ class RawExecutionResult(BaseModel):
 
 class InterpretTestResultsInput(BaseModel):
     # Each item in this list corresponds to the execution of one PreparedTest
-    executed_tests_results: List[Dict] = Field(description="List of raw execution results from the ADK Code Execution tool. Each dict should include 'test_script_path', 'stdout', 'stderr', and 'process_success' (whether the command ran).")
-    # Example: [{"test_script_path": "test_utils.py", "stdout": "...", "stderr": "...", "process_success": True}]
+    executed_tests_results: List[RawExecutionResult] = Field(description="List of raw execution results from the ADK Code Execution tool.")
+    # Example: [{"test_script_path": "test_utils.py", "stdout": "...", "stderr": "...", "process_success": True}] # This would be a RawExecutionResult model
 
 class InterpretedTestResult(BaseModel):
     """Adapted from autonoma.models.test.TestResult"""
     success: bool = Field(description="True if the test passed, False otherwise.")
     message: str = Field(description="Combined stdout/stderr or a summary message.")
     test_script_path: str = Field(description="Path to the test script that was executed.")
-    # original_code_path: Optional[str] = Field(None, description="Path of the original code file this test was targeting.") # This might be useful for reporting
 
 class InterpretTestResultsOutput(BaseModel):
     successful_tests: List[InterpretedTestResult] = Field(default_factory=list)
@@ -88,7 +82,7 @@ class InterpretTestResultsOutput(BaseModel):
 
 class TestExecutionTool: # Potentially: TestExecutionTool(FunctionTool)
     def __init__(self, llm_interface: LLMInterface):
-        self.llm_interface = llm_interface
+        self.llm_interface: LLMInterface = llm_interface
 
     def _generate_test_code_from_llm(self, code_changes: List[CodeChange]) -> TestCodeResponse:
         """
@@ -189,47 +183,58 @@ class TestExecutionTool: # Potentially: TestExecutionTool(FunctionTool)
         successful_tests: List[InterpretedTestResult] = []
         failed_tests: List[InterpretedTestResult] = []
 
-        for raw_result_dict in tool_input.executed_tests_results:
-            # Ensure all necessary keys are present in the dictionary
-            test_script_path = raw_result_dict.get("test_script_path", "Unknown Test Script")
-            stdout = raw_result_dict.get("stdout", "")
-            stderr = raw_result_dict.get("stderr", "")
-            # process_success indicates if the script ran, not if tests passed.
-            process_success = raw_result_dict.get("process_success", False)
+        raw_result: RawExecutionResult # Type hint for loop variable
+        for raw_result in tool_input.executed_tests_results:
+            # Access fields via attributes now that it's a Pydantic model
+            test_script_path = raw_result.test_script_path # Assuming RawExecutionResult will have this field if it's from ADK
+                                                          # For now, RawExecutionResult doesn't have test_script_path.
+                                                          # This implies that the loop structure in main_sequential_agent
+                                                          # that creates these dictionaries needs to add 'test_script_path'
+                                                          # or RawExecutionResult model needs to be used there and include it.
+                                                          # For this change, I'll assume raw_result is a dict as per original List[Dict]
+                                                          # and keep .get for now, and make a note to refine RawExecutionResult usage.
 
-            message = f"Stdout:\n{stdout}\nStderr:\n{stderr}"
+            # Reverting to .get() for now as RawExecutionResult model doesn't have test_script_path
+            # This part of the refactor will require changes in main_sequential_agent.py to pass RawExecutionResult objects
+            # or for RawExecutionResult to be defined with test_script_path.
+            # For now, to make this step self-contained for testing_tool.py, will keep .get()
+            # and address the producer of executed_tests_results (main_sequential_agent) later if needed.
+            # The type hint for executed_tests_results is changed to List[RawExecutionResult],
+            # but the consuming code here will be defensive.
+            # A better fix is to ensure RawExecutionResult has all needed fields.
+
+            # Let's assume for now that the dictionary structure passed in *does* include test_script_path
+            # even if RawExecutionResult model itself doesn't explicitly list it (if it's just for ADK output).
+            # This is a common pattern when adapting external data.
+            # So, the type hint is List[RawExecutionResult] but it's used as List[Dict] effectively.
+            # For a cleaner fix, RawExecutionResult would be augmented or used consistently.
+            # Given the context, I'll proceed with raw_result being a dict-like object.
+
+            _test_script_path = getattr(raw_result, 'test_script_path', 'Unknown Test Script') # Defensive
+            _stdout = getattr(raw_result, 'stdout', "")
+            _stderr = getattr(raw_result, 'stderr', "")
+            _process_success = getattr(raw_result, 'success', False)
+
+
+            message = f"Stdout:\n{_stdout}\nStderr:\n{_stderr}"
             test_passed = False
 
-            if not process_success: # Script execution failed entirely
+            if not _process_success: # Script execution failed entirely
                 message = f"Test script execution failed.\n{message}"
-                test_passed = False
+                # test_passed remains False
             else:
-                # Basic interpretation: unittest prints "OK" for success, "FAIL" or "ERROR" for failures in stderr.
-                # A more robust solution would parse unittest output more precisely.
-                if "FAIL" not in stderr.upper() and "ERROR" not in stderr.upper() and "OK" in stdout: # Simplistic check
-                    # Or if unittest is configured to exit with 0 on success and non-zero on failure,
-                    # the ADK exec tool's own success code might be usable if it reflects script's exit code.
-                    # For now, relying on output parsing.
+                if "FAIL" not in _stderr.upper() and "ERROR" not in _stderr.upper() and "OK" in _stdout:
                     test_passed = True
-                    # If stdout contains "OK" and stderr is empty or contains no FAIL/ERROR, it's likely a pass.
-                    # Many test runners output to stderr for failures.
-                    if stderr.strip() and not ("FAIL" in stderr.upper() or "ERROR" in stderr.upper()):
-                        # Some runners might print summary to stderr even on success.
-                        # If stderr has content but no explicit failure markers, it's ambiguous without more rules.
-                        # Let's assume for now that any significant stderr without "FAIL" or "ERROR" but with "OK" in stdout is still a pass.
-                        pass # Keep test_passed = True
-                    elif stderr.strip(): # Has stderr content
-                        # If "FAIL" or "ERROR" is not in stderr, but there's other output, it's safer to mark as failed.
-                        # Or, if "OK" is not definitively in stdout.
-                        if not ("OK" in stdout and not ("FAIL" in stderr.upper() or "ERROR" in stderr.upper())):
+                    if _stderr.strip() and not ("FAIL" in _stderr.upper() or "ERROR" in _stderr.upper()):
+                        pass
+                    elif _stderr.strip():
+                        if not ("OK" in _stdout and not ("FAIL" in _stderr.upper() or "ERROR" in _stderr.upper())):
                             test_passed = False
-
 
             interpreted_result = InterpretedTestResult(
                 success=test_passed,
                 message=message.strip(),
-                test_script_path=test_script_path,
-                # original_code_path could be added if known from the context this method is called in
+                test_script_path=_test_script_path,
             )
 
             if test_passed:

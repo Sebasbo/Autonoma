@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 # from adk.tool_registry import FunctionTool
 
 # Import necessary models from autonoma.models
-from autonoma.models.agent import CodeFile # CodeFileModel
+from autonoma.models.code import CodeFile # Updated: Was models.agent
 from autonoma.models.project import Project # ProjectModel
 from autonoma.models.task import Task, TaskType # Task model for plan structure
 
@@ -171,7 +171,9 @@ class PlanningTool: # Potentially: PlanningTool(FunctionTool):
         # Parse JSON into ProjectModel (autonoma.models.project.Project)
         # Pydantic will validate the structure based on Project, Agent, and Task models
         try:
-            project_plan = Project(**plan_dict)
+            # Type hint for plan_dict, which is the result of json.loads
+            plan_dict_typed: Dict[str, Any] = plan_dict
+            project_plan = Project(**plan_dict_typed)
         except Exception as e: # Catch Pydantic validation errors or other issues
             raise ValueError(f"Failed to validate plan against Project model: {e}")
 
@@ -226,7 +228,7 @@ if __name__ == "__main__":
     # If the dummy LLM in LLMInterface is modified to return a plan like:
     # { "agents": [{ "name": "Code Implementer", "role": "...", "goal": "...", "tasks": [
     #   { "id": "task_new", "description": "Create new_file.py", "task_type": "code_implementation",
-    #     "status": "not_started", "execution_type": "llm_call", "file_paths": ["new_file.py"], ...}
+    #     "status": "not_started", "execution_type": "llm_call", "file_paths": ["new_file.py"], ...} # type: ignore
     # ]}]}
     # Then the relevant_code for "new_file.py" should be ""
 
