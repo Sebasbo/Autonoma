@@ -1,1 +1,0 @@
-Processing query via MainSequentialAgent: Refactor the functions in data_processor.py and utils.py to use higher-order functions like map, filter, and reduce instead of for loops
